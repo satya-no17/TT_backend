@@ -15,6 +15,7 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`server is running on ${PORT}`)
 })
+
 app.get('/test-db', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()')
@@ -107,6 +108,7 @@ app.get('/users/:userId/dashboard', async (req, res) => {
       todos: todos.rows,
       goals: goals.rows
     })
+console.log(goals)
 
   } catch (err) {
     console.error(err)
@@ -121,6 +123,52 @@ app.post('/create/todo', async (req, res) => {
     }
     await pool.query(`insert into todos(user_id , title ,completed) values ($1,$2,$3)`, [user_id, title, completed ?? false])
     res.status(201).json({ message: "todo created successfully" })
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: 'DB error' })
+
+  }
+})
+
+
+app.post('/create/goal', async (req, res) => {
+  try {
+
+    const { user_id, title, target_value, type } = req.body
+
+    // validation
+    if (!user_id || !title || !target_value || !type) {
+      return res.status(400).json({ error: 'Missing fields' })
+    }
+
+    const result = await pool.query(
+      `INSERT INTO goals (user_id, title, target_value, type)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [user_id, title, target_value, type]
+    )
+
+    res.status(201).json({
+      message: "Goal created successfully",
+      goal: result.rows[0]
+    })
+
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: 'DB error' })
+  }
+})
+
+
+
+app.post('/create/daily_task', async (req, res) => {
+  try {
+    const { user_id, title,date, completed } = req.body
+    if (!user_id || !title|| !date) {
+      return res.status(400).json({ error: 'Missing fields' })
+    }
+    await pool.query(`insert into daily_tasks(user_id , title ,date,completed) values ($1,$2,$3,$4)`, [user_id, title, date,completed ?? false])
+    res.status(201).json({ message: "daily task created successfully" })
   } catch (error) {
     console.log(error)
     res.status(500).json({ error: 'DB error' })
@@ -147,14 +195,62 @@ app.delete('/users/:userId/todos/:id', async (req, res) => {
   }
 })
 
-app.post('/users/:userId/todos/:id', async (req, res) => {
+
+app.delete('/users/:userId/daily_tasks/:id', async (req, res) => {
+  try {
+    const user_id = parseInt(req.params.userId)
+    const id = parseInt(req.params.id)
+    if (!id) {
+      return res.status(400).json({ error: 'Missing fields' })
+    }
+
+    const result = await pool.query('DELETE FROM daily_tasks WHERE id = $1 and user_id = $2', [id, user_id])
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'daily not found' })
+    }
+    res.status(200).json({ message: 'task deleted successfully' })
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: 'DB error' })
+  }
+})
+
+
+
+app.delete('/users/:userId/goals/:id', async (req, res) => {
+  try {
+    const user_id = parseInt(req.params.userId)
+    const id = parseInt(req.params.id)
+    if (!id) {
+      return res.status(400).json({ error: 'Missing fields' })
+    }
+
+    const result = await pool.query('DELETE FROM goals WHERE id = $1 and user_id = $2', [id, user_id])
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'goals not found' })
+    }
+    res.status(200).json({ message: 'goals deleted successfully' })
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: 'DB error' })
+  }
+})
+
+
+app.put('/users/:userId/todos/:id', async (req, res) => {
   try{
   const user_id = parseInt(req.params.userId)
   const id = parseInt(req.params.id)
+      const { title, completed } = req.body
   if (!id) {
     return res.status(400).json({ error: 'Missing fields' })
   }
-  const result = await pool.query('')
+   const result = await pool.query(
+      `UPDATE todos 
+       SET title = $1, completed = $2 
+       WHERE id = $3 AND user_id = $4`,
+      [title, completed, id, user_id]
+    )
   if (result.rowCount === 0) {
     return res.status(404).json({ error: 'Todo not found' })
   }
@@ -163,4 +259,76 @@ app.post('/users/:userId/todos/:id', async (req, res) => {
   console.log(error)
   res.status(500).json({ error: 'DB error' })
 }
+})
+
+
+app.put('/users/:userId/daily_tasks/:id', async (req, res) => {
+  try {
+
+    const user_id = parseInt(req.params.userId)
+    const id = parseInt(req.params.id)
+
+    const { title, date,completed } = req.body
+    console.log('bodyyyyyy:::::  ',req.body)
+    if (!user_id || !id) {
+      return res.status(400).json({ error: "Missing params" })
+    }
+
+    const result = await pool.query(
+      `UPDATE daily_tasks
+       SET title = $1,
+           date = $2,
+           completed = $3
+       WHERE id = $4 AND user_id = $5
+       RETURNING *`,
+      [title, date, completed, id, user_id]
+    )
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Daily task not found" })
+    }
+
+    res.json({
+      message: "Daily task updated successfully",
+      task: result.rows[0]
+    })
+
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: "DB error" })
+  }
+})
+
+app.put('/users/:userId/goals/:goalId', async (req, res) => {
+  try {
+
+    const user_id = parseInt(req.params.userId)
+    const goal_id = parseInt(req.params.goalId)
+    const { current_value } = req.body
+
+    if (current_value === undefined) {
+      return res.status(400).json({ error: 'Missing value' })
+    }
+
+    const result = await pool.query(
+      `UPDATE goals
+       SET current_value = $1
+       WHERE id = $2 AND user_id = $3
+       RETURNING *`,
+      [current_value, goal_id, user_id]
+    )
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Goal not found' })
+    }
+
+    res.json({
+      message: "Goal updated",
+      goal: result.rows[0]
+    })
+
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({ error: 'DB error' })
+  }
 })
