@@ -88,10 +88,16 @@ app.get('/users/:userId/dashboard', async (req, res) => {
   const { userId } = req.params
 
   try {
-    const dailyTasks = await pool.query(
-      'SELECT * FROM daily_tasks WHERE user_id = $1 ORDER BY date DESC',
-      [userId]
-    )
+    const today = new Date().toISOString().split("T")[0];
+
+    const result = await pool.query(
+  `SELECT * FROM daily_tasks WHERE user_id = $1`,
+  [userId]
+)
+const dailyTasks = result.rows.map(task => ({
+  ...task,
+  completed: task.last_completed_date === today
+}))
 
     const todos = await pool.query(
       'SELECT * FROM todos WHERE user_id = $1 ORDER BY created_at DESC',
@@ -163,11 +169,12 @@ app.post('/create/goal', async (req, res) => {
 
 app.post('/create/daily_task', async (req, res) => {
   try {
-    const { user_id, title,date, completed } = req.body
-    if (!user_id || !title|| !date) {
+    const { user_id, title} = req.body
+    if (!user_id || !title) {
       return res.status(400).json({ error: 'Missing fields' })
     }
-    await pool.query(`insert into daily_tasks(user_id , title ,date,completed) values ($1,$2,$3,$4)`, [user_id, title, date,completed ?? false])
+    await pool.query(`INSERT INTO daily_tasks (user_id, title, last_completed_date)
+VALUES ($1, $2, NULL)`, [user_id, title ?? false])
     res.status(201).json({ message: "daily task created successfully" })
   } catch (error) {
     console.log(error)
@@ -268,21 +275,19 @@ app.put('/users/:userId/daily_tasks/:id', async (req, res) => {
     const user_id = parseInt(req.params.userId)
     const id = parseInt(req.params.id)
 
-    const { title, date,completed } = req.body
+    const { completed } = req.body
+    const today = new Date().toISOString().split("T")[0];
     console.log('bodyyyyyy:::::  ',req.body)
     if (!user_id || !id) {
       return res.status(400).json({ error: "Missing params" })
     }
 
-    const result = await pool.query(
-      `UPDATE daily_tasks
-       SET title = $1,
-           date = $2,
-           completed = $3
-       WHERE id = $4 AND user_id = $5
-       RETURNING *`,
-      [title, date, completed, id, user_id]
-    )
+    const result =await pool.query(
+  `UPDATE daily_tasks
+   SET last_completed_date = $1
+   WHERE id = $2 AND user_id = $3`,
+  [completed ? today : null, id, user_id]
+)
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Daily task not found" })
