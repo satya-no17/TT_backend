@@ -7,6 +7,12 @@ import bcrypt from 'bcrypt'
 dotenv.config()
 const app = express();
 const PORT = process.env.PORT;
+
+const getTodayInIST = () =>
+  new Date().toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Calcutta'
+  })
+
 app.use(cors())
 app.use(express.json())
 app.get('/', (req, res) => {
@@ -88,7 +94,7 @@ app.get('/users/:userId/dashboard', async (req, res) => {
   const { userId } = req.params
 
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayInIST()
 
     const result = await pool.query(
   `SELECT * FROM daily_tasks WHERE user_id = $1`,
@@ -275,8 +281,8 @@ app.put('/users/:userId/daily_tasks/:id', async (req, res) => {
     const user_id = parseInt(req.params.userId)
     const id = parseInt(req.params.id)
 
-    const { completed } = req.body
-    const today = new Date().toISOString().split("T")[0];
+    const { title, completed } = req.body
+    const today = getTodayInIST()
     console.log('bodyyyyyy:::::  ',req.body)
     if (!user_id || !id) {
       return res.status(400).json({ error: "Missing params" })
@@ -284,9 +290,10 @@ app.put('/users/:userId/daily_tasks/:id', async (req, res) => {
 
     const result =await pool.query(
   `UPDATE daily_tasks
-   SET last_completed_date = $1
-   WHERE id = $2 AND user_id = $3`,
-  [completed ? today : null, id, user_id]
+   SET title = $1, last_completed_date = $2
+   WHERE id = $3 AND user_id = $4
+   RETURNING *`,
+  [title, completed ? today : null, id, user_id]
 )
 
     if (result.rowCount === 0) {
