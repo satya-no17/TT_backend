@@ -110,7 +110,7 @@ const dailyTasks = result.rows.map(task => ({
     )
 
     res.json({
-      dailyTasks: dailyTasks.rows,
+      dailyTasks,
       todos: todos.rows,
       goals: goals.rows
     })
